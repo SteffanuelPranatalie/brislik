@@ -20,7 +20,7 @@ st.markdown("""
         padding: 20px;
         border-radius: 12px;
         margin-bottom: 20px;
-        min-height: 250px;
+        min-height: 260px;
     }
     .identitas-bg { background-color: #F8F9FA; border: 2px solid #D1D5DB; }
     .audit-bg { background-color: #FFF9C4; border: 2px solid #FBC02D; }
@@ -54,6 +54,13 @@ with st.sidebar:
     st.divider()
     st.caption("BRI SLIK Rekapitulasi by Steffanuel Pranatalie (23081010059) Mhs UPN Veteran Jawa Timur")
 
+# Fungsi Format Rupiah (Rp 1.000.000)
+def format_rupiah(val):
+    try:
+        return "Rp " + f"{int(float(val)):,}".replace(",", ".")
+    except:
+        return "Rp 0"
+
 def format_date(date_str):
     if not date_str or date_str in ["-", "null", ""]: return "-"
     try:
@@ -64,7 +71,6 @@ def format_date(date_str):
 
 if uploaded_file is not None:
     try:
-        # Load JSON Smart
         raw_content = uploaded_file.read().decode("utf-8-sig", errors="ignore")
         data = json.loads(raw_content.strip())
         while isinstance(data, str):
@@ -73,16 +79,18 @@ if uploaded_file is not None:
         ind = data.get('individual', {})
         if isinstance(ind, list): ind = ind[0]
         
-        data_pokok = ind.get('dataPokokDebitur', [{}])[0]
+        data_pokok_list = ind.get('dataPokokDebitur', [{}])
+        data_pokok = data_pokok_list[0] if data_pokok_list else {}
         ringkasan = ind.get('ringkasanFasilitas', {})
         header_info = data.get('header', {})
 
-        # Persiapan Data
+        # Persiapan Data Identitas
         nama = (data_pokok.get('namaDebitur') or ind.get('parameterPencarian', {}).get('namaDebitur', '-')).upper()
         nik = data_pokok.get('noIdentitas', '-')
         alamat = data_pokok.get('alamat', '-')
         tgl_lap = format_date(header_info.get('tanggalHasil') or ind.get('tanggalPermintaan'))
         
+        # Persiapan Data Audit
         skor = ringkasan.get('kualitasTerburuk', '-')
         kewajiban = float(ringkasan.get('bakiDebetTotal', 0) or 0)
         total_kred = sum([int(ringkasan.get(k, 0) or 0) for k in ['krediturBankUmum', 'krediturBPR/S', 'krediturLp', 'krediturLainnya']])
@@ -91,7 +99,6 @@ if uploaded_file is not None:
         col_identitas, col_audit = st.columns(2)
 
         with col_identitas:
-            # Judul dan isi dimasukkan dalam satu blok HTML agar masuk container
             st.markdown(f"""
                 <div class="box-container identitas-bg">
                     <div class="inner-header">👤 Identitas Debitur</div>
@@ -107,7 +114,7 @@ if uploaded_file is not None:
                 <div class="box-container audit-bg">
                     <div class="inner-header">🔍 Summary Audit</div>
                     <p class="lbl">Skor Terburuk</p><p class="val" style="color:#D32F2F;">Kolektabilitas {skor}</p>
-                    <p class="lbl">Total Kewajiban</p><p class="val">Rp {kewajiban:,.0f}</p>
+                    <p class="lbl">Total Kewajiban</p><p class="val">{format_rupiah(kewajiban)}</p>
                     <p class="lbl">Total Kreditur</p><p class="val">{total_kred} Lembaga/Bank</p>
                     <p class="lbl">Status Audit</p><p class="val">Verified</p>
                 </div>
@@ -128,8 +135,9 @@ if uploaded_file is not None:
                 "NO": i,
                 "NAMA JASA KEUANGAN": (f.get('ljkKet') or f.get('namaLjk', '-')).upper(),
                 "JENIS": f.get('jenisKreditPembiayaanKet') or f.get('jenisKreditKet', '-'),
-                "PLAFON": float(f.get('plafon', 0) or 0),
-                "BAKI DEBET": float(f.get('bakiDebet', 0) or 0),
+                "PLAFON": format_rupiah(f.get('plafon', 0)),
+                "BAKI DEBET": format_rupiah(f.get('bakiDebet', 0)),
+                "DENDA": format_rupiah(f.get('denda', 0)),
                 "KOL": f.get('kualitas') or f.get('kolektabilitas', '-'),
                 "TGL MULAI": format_date(f.get('tanggalMulai')),
                 "JATUH TEMPO": format_date(f.get('tanggalJatuhTempo')),
@@ -139,11 +147,8 @@ if uploaded_file is not None:
         
         if rows:
             df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True,
-                         column_config={
-                             "PLAFON": st.column_config.NumberColumn(format="Rp %d"),
-                             "BAKI DEBET": st.column_config.NumberColumn(format="Rp %d"),
-                         })
+            # Menampilkan dataframe dengan lebar penuh
+            st.dataframe(df, use_container_width=True, hide_index=True)
         else:
             st.warning("Data rincian tidak ditemukan dalam file.")
 
