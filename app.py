@@ -20,7 +20,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Desain Dashboard (Container Statis & Font Kondisional)
+# 2. Desain Dashboard (Container Statis, Font Adaptif, & Tinggi Simetris)
 st.markdown("""
     <style>
     .stApp { background-color: var(--background-color); }
@@ -32,9 +32,17 @@ st.markdown("""
         padding-bottom: 10px; 
         margin-bottom: 25px; 
     }
-    .box-container { padding: 20px; border-radius: 12px; margin-bottom: 20px; min-height: 260px; }
     
-    /* Container Tetap Statis di Kedua Tema sesuai Gambar */
+    /* Ukuran tetap (height) agar simetris di iPad/Tablet */
+    .box-container { 
+        padding: 20px; 
+        border-radius: 12px; 
+        margin-bottom: 20px; 
+        height: 320px !important; 
+        overflow-y: auto;
+    }
+    
+    /* Container Tetap Statis Light di Kedua Tema */
     .identitas-bg { background-color: #F8F9FA !important; border: 2px solid #D1D5DB !important; }
     .audit-bg { background-color: #FFF9C4 !important; border: 2px solid #FBC02D !important; }
     
@@ -43,7 +51,6 @@ st.markdown("""
     .val { color: #111827 !important; font-size: 14px; font-weight: 700; margin-bottom: 10px; line-height: 1.4; }
     .table-header { color: #003366 !important; font-size: 20px; font-weight: 700; margin-top: 20px; margin-bottom: 15px; border-left: 6px solid #3399FF; padding-left: 15px; }
 
-    /* Pengkondisian Font saat Tema Dark agar tetap terbaca di Container Terang */
     @media (prefers-color-scheme: dark) {
         .main-title, .table-header { color: #99CCFF !important; }
         .inner-header { color: #003366 !important; }
@@ -106,26 +113,11 @@ def export_word(id_info, aud_info, df):
     section = doc.sections[-1]
     section.orientation = WD_ORIENTATION.LANDSCAPE
     section.page_width, section.page_height = section.page_height, section.page_width
-
     doc.add_heading('LAPORAN REKAPITULASI & AUDIT BRISLIK', 0)
-    
-    # Identitas Lengkap
     doc.add_heading('IDENTITAS DEBITUR', level=1)
-    doc.add_paragraph(f"Nama Lengkap: {id_info['nama']}")
-    doc.add_paragraph(f"NIK: {id_info['nik']}")
-    doc.add_paragraph(f"Alamat Lengkap: {id_info['alamat']}")
-    doc.add_paragraph(f"Tanggal Laporan: {id_info['tgl']}")
-
-    # Audit Lengkap
+    doc.add_paragraph(f"Nama: {id_info['nama']}\nNIK: {id_info['nik']}\nAlamat: {id_info['alamat']}\nTanggal: {id_info['tgl']}")
     doc.add_heading('SUMMARY AUDIT', level=1)
-    doc.add_paragraph(f"Skor Terburuk: Kolektabilitas {aud_info['skor']}")
-    doc.add_paragraph(f"Total Plafon: {aud_info['plafon']}")
-    doc.add_paragraph(f"Total Kewajiban: {aud_info['baki']}")
-    doc.add_paragraph(f"Utilisasi: {aud_info['util']}")
-    doc.add_paragraph(f"Total Kreditur: {aud_info['total_kred']} Lembaga")
-    doc.add_paragraph("Status Audit: Verified")
-
-    # Tabel Rincian
+    doc.add_paragraph(f"Skor: {aud_info['skor']}\nTotal Plafon: {aud_info['plafon']}\nTotal Kewajiban: {aud_info['baki']}\nUtilisasi: {aud_info['util']}\nTotal Kreditur: {aud_info['total_kred']} Lembaga")
     doc.add_heading('RINCIAN FASILITAS', level=1)
     table = doc.add_table(rows=1, cols=len(df.columns))
     table.style = 'Table Grid'
@@ -138,7 +130,6 @@ def export_word(id_info, aud_info, df):
             if i == 1: text_val = text_val[:35]
             if i == 2: text_val = text_val[:30]
             row_cells[i].text = text_val
-    
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
@@ -149,29 +140,23 @@ def export_pdf(id_info, aud_info, df):
     pdf.set_font("Helvetica", 'B', 16)
     pdf.cell(0, 10, "LAPORAN REKAPITULASI & AUDIT BRISLIK", ln=True, align='C')
     pdf.ln(5)
-
     pdf.set_font("Helvetica", 'B', 10)
     pdf.cell(0, 7, "IDENTITAS DEBITUR", ln=True)
     pdf.set_font("Helvetica", size=9)
     pdf.cell(0, 6, safe_text(f"Nama Lengkap: {id_info['nama']} | NIK: {id_info['nik']}"), ln=True)
     pdf.cell(0, 6, safe_text(f"Alamat Lengkap: {id_info['alamat']}"), ln=True)
-    pdf.cell(0, 6, safe_text(f"Tanggal Laporan: {id_info['tgl']}"), ln=True)
     pdf.ln(3)
-
     pdf.set_font("Helvetica", 'B', 10)
     pdf.cell(0, 7, "SUMMARY AUDIT", ln=True)
     pdf.set_font("Helvetica", size=9)
     pdf.cell(0, 6, safe_text(f"Skor: {aud_info['skor']} | Total Plafon: {aud_info['plafon']}"), ln=True)
     pdf.cell(0, 6, safe_text(f"Total Kewajiban: {aud_info['baki']} | Utilisasi: {aud_info['util']}"), ln=True)
-    pdf.cell(0, 6, safe_text(f"Total Kreditur: {aud_info['total_kred']} Lembaga | Status: Verified"), ln=True)
     pdf.ln(5)
-
     pdf.set_font("Helvetica", 'B', 7)
     w = [8, 45, 35, 28, 28, 25, 8, 22, 22, 16, 40] 
     for i, c in enumerate(df.columns):
         pdf.cell(w[i], 8, c, 1, 0, 'C')
     pdf.ln()
-    
     pdf.set_font("Helvetica", size=6)
     for _, r in df.iterrows():
         for i, col in enumerate(df.columns):
@@ -280,14 +265,12 @@ if uploaded_file is not None:
             st.divider()
             st.subheader("📥 Unduh Laporan")
             b1, b2, b3 = st.columns(3)
-            
             id_info = {"nama": nama_v, "nik": nik_v, "alamat": alamat_v, "tgl": tgl_v}
             aud_info = {"skor": skor_v, "plafon": format_rupiah(plafon_v), "baki": format_rupiah(baki_v), "util": f"{util_v:.2f}%", "total_kred": total_kred}
 
             with b1:
                 st.download_button("Excel (.xlsx)", icon="📊", data=export_excel(id_info, aud_info, df_filtered), file_name=f"Audit_{nama_v}.xlsx")
             with b2:
-                # Word sekarang sudah LENGKAP identifikasinya dan summary auditnya
                 st.download_button("Word (.docx)", icon="📝", data=export_word(id_info, aud_info, df_filtered), file_name=f"Audit_{nama_v}.docx")
             with b3:
                 if st.button("Generate PDF", icon="⚙️"):
