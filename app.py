@@ -20,25 +20,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Desain Dashboard (Container Statis, Font Adaptif, & Tinggi Simetris)
+# 2. Desain Dashboard
 st.markdown("""
     <style>
     .stApp { background-color: var(--background-color); }
-    .main-title { 
-        color: #003366 !important; 
-        font-size: 30px; 
-        font-weight: 800; 
-        border-bottom: 4px solid #3399FF; 
-        padding-bottom: 10px; 
-        margin-bottom: 25px; 
-    }
-    .box-container { 
-        padding: 20px; 
-        border-radius: 12px; 
-        margin-bottom: 20px; 
-        height: 380px !important; 
-        overflow-y: auto;
-    }
+    .main-title { color: #003366 !important; font-size: 30px; font-weight: 800; border-bottom: 4px solid #3399FF; padding-bottom: 10px; margin-bottom: 25px; }
+    .box-container { padding: 20px; border-radius: 12px; margin-bottom: 20px; height: 380px !important; overflow-y: auto; }
     .identitas-bg { background-color: #F8F9FA !important; border: 2px solid #D1D5DB !important; }
     .audit-bg { background-color: #FFF9C4 !important; border: 2px solid #FBC02D !important; }
     .inner-header { color: #003366 !important; font-size: 18px; font-weight: 800; margin-bottom: 15px; border-bottom: 1px solid rgba(0,0,0,0.1); text-transform: uppercase; }
@@ -125,25 +112,31 @@ def export_pdf(id_info, aud_info, df):
     pdf.cell(0, 5, safe_text(f"Skor: Kol {aud_info['skor']} | Plafon: {aud_info['plafon']} | Kewajiban: {aud_info['baki']}"), ln=True)
     pdf.cell(0, 5, safe_text(f"Utilisasi: {aud_info['util']} | Kreditur: {aud_info['total_kred']} Lembaga | Posisi: {aud_info['posisi']}"), ln=True)
     pdf.ln(5); pdf.set_font("Helvetica", 'B', 7)
-    w = [8, 30, 55, 35, 15, 15, 25, 15, 30, 30]
+    # Penyesuaian lebar kolom PDF agar muat kolom baru
+    w = [8, 25, 50, 30, 15, 15, 20, 12, 25, 25, 25, 25] if len(df.columns) > 10 else [8, 30, 55, 35, 15, 15, 15, 25, 15, 30, 30]
+    # Jika slik 2, gunakan w_bank
+    if "OS (Rp)" in df.columns:
+        w_bank = [8, 25, 45, 25, 12, 12, 20, 12, 25, 25]
+        w = w_bank
+    
     for i, c in enumerate(df.columns): pdf.cell(w[i], 8, safe_text(c), 1, 0, 'C')
     pdf.ln(); pdf.set_font("Helvetica", size=6)
     for _, r in df.iterrows():
-        for i, col in enumerate(df.columns): pdf.cell(w[i], 7, safe_text(r[col])[:35], 1, 0, 'L' if i in [1,2] else 'C')
+        for i, col in enumerate(df.columns): 
+            val = safe_text(r[col])
+            pdf.cell(w[i], 7, val[:35], 1, 0, 'L' if i in [1,2] else 'C')
         pdf.ln()
     return bytes(pdf.output())
 
 # 3. Sidebar & Logika Utama
 with st.sidebar:
     st.header("⚙️ Menu Utama")
-    # PERUBAHAN: accept_multiple_files=True
     uploaded_files = st.file_uploader("Unggah File .txt iDEB", type=["txt"], accept_multiple_files=True)
     st.divider(); st.caption("Developed by Steffanuel Pranatalie (23081010059)")
 
 if uploaded_files:
     for uploaded_file in uploaded_files:
         try:
-            # Gunakan expander agar UI tetap rapi jika banyak file diupload
             with st.expander(f"📁 Dashboard Debitur: {uploaded_file.name}", expanded=True):
                 raw_content = uploaded_file.read().decode("utf-8-sig", errors="ignore")
                 data = json.loads(raw_content.strip())
@@ -191,14 +184,30 @@ if uploaded_files:
 
                 rows = []
                 for i, f in enumerate(all_fas, 1):
+                    # --- LOGIKA KOLEK TERBURUK ---
+                    histori_kolek = []
+                    if f.get('kualitas'): histori_kolek.append(str(f.get('kualitas')))
+                    # Cek histori 24 bulan
+                    for j in range(1, 25):
+                        kunci_kol = f"tahunBulan{j:02d}Kol"
+                        nilai_kol = f.get(kunci_kol)
+                        if nilai_kol and str(nilai_kol).strip():
+                            histori_kolek.append(str(nilai_kol).strip())
+                    
+                    kolek_terburuk = max(histori_kolek) if histori_kolek else (f.get('kualitas') or '-')
+                    
+                    # Logika Pemetaan Jenis Penggunaan
                     raw_p = str(f.get('jenisPenggunaanKet', '')).lower()
                     mapped_p = "KMK" if "modal kerja" in raw_p else ("Investasi" if "investasi" in raw_p else "Konsumsi")
                     original_p = f.get('jenisKreditPembiayaanKet') or f.get('jenisKreditKet', '-')
+
                     rows.append({
                         "NO": i, "NAMA JASA KEUANGAN": (f.get('ljkKet') or '-').upper(), 
                         "JENIS_ORIGINAL": original_p, "JENIS_MAPPED": mapped_p,
                         "PLAFON": format_rupiah(f.get('plafon', 0)), "BAKI DEBET": format_rupiah(f.get('bakiDebet', 0)),
-                        "RAW_BAKI": float(f.get('bakiDebet', 0)), "KOL": str(f.get('kualitas') or '-'),
+                        "RAW_BAKI": float(f.get('bakiDebet', 0)), 
+                        "KOL_TERAKHIR": str(f.get('kualitas') or '-'),
+                        "KOL_TERBURUK": kolek_terburuk,
                         "BUNGA": f"{f.get('sukuBungaImbalan', '-')} %", "KONDISI": f.get('kondisiKet', '-'),
                         "RESTRUK": "✔" if f.get('tanggalRestrukturisasiAkhir') else "-"
                     })
@@ -206,32 +215,41 @@ if uploaded_files:
                 if rows:
                     df_full = pd.DataFrame(rows)
                     st.markdown('<div class="table-header">PENGATURAN OUTPUT TABEL</div>', unsafe_allow_html=True)
-                    # Gunakan unique key berdasarkan nama file
                     sel_format = st.radio(f"Pilih Tampilan ({uploaded_file.name}):", options=["slik 1 (Default)", "slik 2"], horizontal=True, key=f"fmt_{uploaded_file.name}")
                     
                     c_f1, c_f2, c_f3, c_f4 = st.columns(4)
                     with c_f1: sel_bank = st.multiselect("Filter Bank", options=sorted(df_full['NAMA JASA KEUANGAN'].unique()), key=f"bank_{uploaded_file.name}")
                     with c_f2: sel_jenis = st.multiselect("Filter Jenis", options=sorted(df_full['JENIS_MAPPED'].unique()), key=f"jenis_{uploaded_file.name}")
-                    with c_f3: sel_kol = st.multiselect("Filter Skor KOL", options=sorted(df_full['KOL'].unique()), key=f"kol_{uploaded_file.name}")
+                    with c_f3: sel_kol = st.multiselect("Filter Skor KOL", options=sorted(df_full['KOL_TERAKHIR'].unique()), key=f"kol_{uploaded_file.name}")
                     with c_f4: sel_kondisi = st.multiselect("Filter Kondisi", options=sorted(df_full['KONDISI'].unique()), key=f"kond_{uploaded_file.name}")
 
                     df_f = df_full.copy()
                     if sel_bank: df_f = df_f[df_f['NAMA JASA KEUANGAN'].isin(sel_bank)]
                     if sel_jenis: df_f = df_f[df_f['JENIS_MAPPED'].isin(sel_jenis)]
-                    if sel_kol: df_f = df_f[df_f['KOL'].isin(sel_kol)]
+                    if sel_kol: df_f = df_f[df_f['KOL_TERAKHIR'].isin(sel_kol)]
                     if sel_kondisi: df_f = df_f[df_f['KONDISI'].isin(sel_kondisi)]
                     df_f['NO'] = range(1, len(df_f) + 1)
 
                     st.markdown('<div class="table-header">RINCIAN FASILITAS DEBITUR</div>', unsafe_allow_html=True)
+                    
                     if sel_format == "slik 2":
-                        df_b = df_f.rename(columns={"JENIS_MAPPED": "Jenis Penggunaan", "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan", "BAKI DEBET": "OS (Rp)", "KOL": "Kol Terakhir", "BUNGA": "Rate (%)"})
-                        df_b["Kol terburuk"] = df_b["Kol Terakhir"]; df_b["Jumlah Hari Kol"] = "-"; df_b["Restrukturisasi Ya"] = df_b["RESTRUK"].apply(lambda x: "✔" if x=="✔" else ""); df_b["Restrukturisasi Tidak"] = df_b["RESTRUK"].apply(lambda x: "" if x=="✔" else "✔")
+                        # Mapping slik 2 (Blue Theme)
+                        df_b = df_f.rename(columns={
+                            "JENIS_MAPPED": "Jenis Penggunaan", 
+                            "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan", 
+                            "BAKI DEBET": "OS (Rp)", 
+                            "KOL_TERAKHIR": "Kol Terakhir",
+                            "KOL_TERBURUK": "Kol terburuk",
+                            "BUNGA": "Rate (%)"
+                        })
+                        df_b["Jumlah Hari Kol"] = "-"; df_b["Restrukturisasi Ya"] = df_b["RESTRUK"].apply(lambda x: "✔" if x=="✔" else ""); df_b["Restrukturisasi Tidak"] = df_b["RESTRUK"].apply(lambda x: "" if x=="✔" else "✔")
                         cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "OS (Rp)", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi Ya", "Restrukturisasi Tidak"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_b[cols], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                         df_final = df_b[cols]
                     else:
-                        df_d = df_f.rename(columns={"JENIS_ORIGINAL": "JENIS"})
+                        # slik 1 (Default) dengan tambahan Kolom Kolek Terburuk
+                        df_d = df_f.rename(columns={"JENIS_ORIGINAL": "JENIS", "KOL_TERAKHIR": "KOL TERAKHIR", "KOL_TERBURUK": "KOL TERBURUK"})
                         df_final = df_d.drop(columns=['RAW_BAKI', 'RESTRUK', 'JENIS_MAPPED']); st.dataframe(df_final, use_container_width=True, hide_index=True)
 
                     st.divider(); st.subheader("📥 Unduh Laporan")
@@ -244,10 +262,5 @@ if uploaded_files:
                         if st.button("Generate PDF", icon="⚙️", key=f"gen_{uploaded_file.name}"):
                             pdf_b = export_pdf(id_i, aud_i, df_final)
                             st.download_button("Klik Simpan PDF", icon="📕", data=pdf_b, file_name=f"Audit_{nama_v}.pdf", key=f"pdf_{uploaded_file.name}")
-                else:
-                    st.warning(f"Data rincian tidak ditemukan untuk file {uploaded_file.name}.")
-
-        except Exception as e:
-            st.error(f"❌ Kesalahan pada file {uploaded_file.name}: {e}")
-else:
-    st.info("Unggah satu atau beberapa file .txt iDEB untuk memproses.")
+        except Exception as e: st.error(f"❌ Kesalahan pada file {uploaded_file.name}: {e}")
+else: st.info("Unggah satu atau beberapa file .txt iDEB untuk memproses.")
