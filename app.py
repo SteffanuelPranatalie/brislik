@@ -20,7 +20,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Desain Dashboard (Container Statis, Font Adaptif, & Tinggi Simetris)
+# 2. Desain Dashboard
 st.markdown("""
     <style>
     .stApp { background-color: var(--background-color); }
@@ -133,7 +133,6 @@ if uploaded_file is not None:
         ind = data.get('individual', {}); data_pokok = ind.get('dataPokokDebitur', [{}])[0]
         ringkasan = ind.get('ringkasanFasilitas', {}); header_info = data.get('header', {})
 
-        # --- DATA PREPARATION LENGKAP ---
         nama_v = str(data_pokok.get('namaDebitur') or "-").upper()
         nik_v = str(data_pokok.get('noIdentitas', '-'))
         alamat_v = str(data_pokok.get('alamat', '-'))
@@ -151,7 +150,6 @@ if uploaded_file is not None:
         total_kred = sum([int(ringkasan.get(k, 0) or 0) for k in ['krediturBankUmum', 'krediturBPR/S', 'krediturLp', 'krediturLainnya']])
         posisi_data_v = str(ind.get('posisiDataTerakhir', '-'))
 
-        # --- UI DISPLAY ---
         col_id, col_aud = st.columns(2)
         with col_id:
             st.markdown(f"""<div class="box-container identitas-bg"><div class="inner-header">👤 Identitas Debitur</div>
@@ -176,9 +174,12 @@ if uploaded_file is not None:
         rows = []
         for i, f in enumerate(all_fas, 1):
             raw_p = str(f.get('jenisPenggunaanKet', '')).lower()
-            final_p = "KMK" if "modal kerja" in raw_p else ("Investasi" if "investasi" in raw_p else "Konsumsi")
+            mapped_p = "KMK" if "modal kerja" in raw_p else ("Investasi" if "investasi" in raw_p else "Konsumsi")
+            original_p = f.get('jenisKreditPembiayaanKet') or f.get('jenisKreditKet', '-')
+
             rows.append({
-                "NO": i, "NAMA JASA KEUANGAN": (f.get('ljkKet') or '-').upper(), "JENIS": final_p,
+                "NO": i, "NAMA JASA KEUANGAN": (f.get('ljkKet') or '-').upper(), 
+                "JENIS_ORIGINAL": original_p, "JENIS_MAPPED": mapped_p,
                 "PLAFON": format_rupiah(f.get('plafon', 0)), "BAKI DEBET": format_rupiah(f.get('bakiDebet', 0)),
                 "RAW_BAKI": float(f.get('bakiDebet', 0)), "KOL": str(f.get('kualitas') or '-'),
                 "BUNGA": f"{f.get('sukuBungaImbalan', '-')} %", "KONDISI": f.get('kondisiKet', '-'),
@@ -188,31 +189,34 @@ if uploaded_file is not None:
         if rows:
             df_full = pd.DataFrame(rows)
             st.markdown('<div class="table-header">PENGATURAN OUTPUT TABEL</div>', unsafe_allow_html=True)
-            sel_format = st.radio("Format:", options=["SLIK 1 (Default)", "SLIK 2 "], horizontal=True)
+            # PERUBAHAN NAMA FORMAT DISINI
+            sel_format = st.radio("Pilih Tampilan:", options=["slik 1 (Default)", "slik 2"], horizontal=True)
             
             c_f1, c_f2, c_f3, c_f4 = st.columns(4)
             with c_f1: sel_bank = st.multiselect("Filter Bank", options=sorted(df_full['NAMA JASA KEUANGAN'].unique()))
-            with c_f2: sel_jenis = st.multiselect("Filter Jenis", options=sorted(df_full['JENIS'].unique()))
-            with c_f3: sel_kol = st.multiselect("Filter Skor KOL", options=sorted(df_full['KOL'].unique()))
+            with c_f2: sel_jenis = st.multiselect("Filter Jenis", options=sorted(df_full['JENIS_MAPPED'].unique()))
+            with c_f3: sel_kol = st.multiselect("Filter KOL", options=sorted(df_full['KOL'].unique()))
             with c_f4: sel_kondisi = st.multiselect("Filter Kondisi", options=sorted(df_full['KONDISI'].unique()))
 
             df_f = df_full.copy()
             if sel_bank: df_f = df_f[df_f['NAMA JASA KEUANGAN'].isin(sel_bank)]
-            if sel_jenis: df_f = df_f[df_f['JENIS'].isin(sel_jenis)]
+            if sel_jenis: df_f = df_f[df_f['JENIS_MAPPED'].isin(sel_jenis)]
             if sel_kol: df_f = df_f[df_f['KOL'].isin(sel_kol)]
             if sel_kondisi: df_f = df_f[df_f['KONDISI'].isin(sel_kondisi)]
             df_f['NO'] = range(1, len(df_f) + 1)
 
             st.markdown('<div class="table-header">RINCIAN FASILITAS DEBITUR</div>', unsafe_allow_html=True)
-            if sel_format == "Format Rekap Bank (Blue Theme)":
-                df_b = df_f.rename(columns={"JENIS": "Jenis Penggunaan", "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan", "BAKI DEBET": "OS (Rp)", "KOL": "Kol Terakhir", "BUNGA": "Rate (%)"})
+            
+            if sel_format == "slik 2":
+                df_b = df_f.rename(columns={"JENIS_MAPPED": "Jenis Penggunaan", "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan", "BAKI DEBET": "OS (Rp)", "KOL": "Kol Terakhir", "BUNGA": "Rate (%)"})
                 df_b["Kol terburuk"] = df_b["Kol Terakhir"]; df_b["Jumlah Hari Kol"] = "-"; df_b["Restrukturisasi Ya"] = df_b["RESTRUK"].apply(lambda x: "✔" if x=="✔" else ""); df_b["Restrukturisasi Tidak"] = df_b["RESTRUK"].apply(lambda x: "" if x=="✔" else "✔")
                 cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "OS (Rp)", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi Ya", "Restrukturisasi Tidak"]
                 st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_b[cols], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                 df_final = df_b[cols]
             else:
-                df_final = df_f.drop(columns=['RAW_BAKI', 'RESTRUK']); st.dataframe(df_final, use_container_width=True, hide_index=True)
+                df_d = df_f.rename(columns={"JENIS_ORIGINAL": "JENIS"})
+                df_final = df_d.drop(columns=['RAW_BAKI', 'RESTRUK', 'JENIS_MAPPED']); st.dataframe(df_final, use_container_width=True, hide_index=True)
 
             st.divider(); st.subheader("📥 Unduh Laporan")
             b1, b2, b3 = st.columns(3)
