@@ -45,8 +45,16 @@ st.markdown("""
 st.markdown('<div class="main-title">📊 BRISLIK Rekapitulasi & Audit</div>', unsafe_allow_html=True)
 
 # --- FUNGSI HELPER ---
+def to_float(val):
+    if not val or val == '-': return 0.0
+    clean_val = str(val).upper().replace('RP', '').replace('.', '').replace(' ', '').strip()
+    clean_val = clean_val.split(',')[0]
+    try: return float(clean_val)
+    except ValueError: return 0.0
+
 def format_rupiah(val):
-    try: return "Rp " + f"{int(float(val)):,}".replace(",", ".")
+    if isinstance(val, str) and "Rp" in val: return val
+    try: return "Rp " + f"{int(to_float(val)):,}".replace(",", ".")
     except: return "Rp 0"
 
 def format_date(date_str):
@@ -60,9 +68,18 @@ def safe_text(text):
     if not text: return "-"
     return str(text).replace("✔", "V").encode('ascii', 'ignore').decode('ascii')
 
+def clean_currency_for_excel(val):
+    if isinstance(val, str) and "Rp" in val:
+        try: return int(val.replace("Rp", "").replace(".", "").strip())
+        except: return val
+    return val
+
 # --- FUNGSI EKSPOR ---
 def export_excel(id_info, aud_info, df):
     output = io.BytesIO()
+    plafon_num = clean_currency_for_excel(aud_info['plafon'])
+    baki_num = clean_currency_for_excel(aud_info['baki'])
+    
     summary_data = [
         ["IDENTITAS DEBITUR", ""],
         ["Nama Lengkap", id_info['nama']], ["NIK", id_info['nik']],
@@ -72,32 +89,37 @@ def export_excel(id_info, aud_info, df):
         ["", ""],
         ["SUMMARY AUDIT", ""],
         ["Skor Terburuk", f"Kolektabilitas {aud_info['skor']}"],
-        ["Total Plafon", aud_info['plafon']], ["Total Kewajiban", aud_info['baki']],
+        ["Total Plafon", plafon_num], ["Total Kewajiban", baki_num],
         ["Utilisasi", aud_info['util']], ["Kreditur", f"{aud_info['total_kred']} Lembaga"],
         ["Posisi Data", aud_info['posisi']], ["Tanggal Laporan", id_info['tgl']],
         ["", ""]
     ]
     df_sum = pd.DataFrame(summary_data)
+    
+    df_export = df.copy()
+    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)"]
+    for col in kolom_uang:
+        if col in df_export.columns:
+            df_export[col] = df_export[col].apply(clean_currency_for_excel)
+            
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_sum.to_excel(writer, index=False, header=False, sheet_name='Audit')
-        df.to_excel(writer, index=False, startrow=len(summary_data), sheet_name='Audit')
+        if not df_export.empty: df_export.to_excel(writer, index=False, startrow=len(summary_data), sheet_name='Audit')
     return output.getvalue()
 
 def export_word(id_info, aud_info, df):
-    doc = Document()
-    section = doc.sections[-1]
-    section.orientation = WD_ORIENTATION.LANDSCAPE
-    section.page_width, section.page_height = section.page_height, section.page_width
+    doc = Document(); section = doc.sections[-1]; section.orientation = WD_ORIENTATION.LANDSCAPE
     doc.add_heading('LAPORAN REKAPITULASI & AUDIT BRISLIK', 0)
     doc.add_heading('IDENTITAS DEBITUR', level=1)
     doc.add_paragraph(f"Nama: {id_info['nama']}\nNIK: {id_info['nik']}\nTTL: {id_info['tmpt_lahir']}, {id_info['tgl_lahir']}\nJK: {id_info['jk']} | NPWP: {id_info['npwp']}\nPekerjaan: {id_info['pekerjaan']}\nAlamat: {id_info['alamat']}")
     doc.add_heading('SUMMARY AUDIT', level=1)
     doc.add_paragraph(f"Skor: Kolektabilitas {aud_info['skor']}\nTotal Plafon: {aud_info['plafon']}\nTotal Kewajiban: {aud_info['baki']}\nUtilisasi: {aud_info['util']} | Kreditur: {aud_info['total_kred']} Lembaga\nPosisi Data: {aud_info['posisi']}")
-    table = doc.add_table(rows=1, cols=len(df.columns)); table.style = 'Table Grid'
-    for i, col in enumerate(df.columns): table.cell(0, i).text = col
-    for _, row in df.iterrows():
-        row_cells = table.add_row().cells
-        for i, val in enumerate(row): row_cells[i].text = safe_text(val)[:35]
+    if not df.empty:
+        table = doc.add_table(rows=1, cols=len(df.columns)); table.style = 'Table Grid'
+        for i, col in enumerate(df.columns): table.cell(0, i).text = col
+        for _, row in df.iterrows():
+            row_cells = table.add_row().cells
+            for i, val in enumerate(row): row_cells[i].text = safe_text(val)[:35]
     out = io.BytesIO(); doc.save(out); return out.getvalue()
 
 def export_pdf(id_info, aud_info, df):
@@ -111,21 +133,33 @@ def export_pdf(id_info, aud_info, df):
     pdf.set_font("Helvetica", size=8)
     pdf.cell(0, 5, safe_text(f"Skor: Kol {aud_info['skor']} | Plafon: {aud_info['plafon']} | Kewajiban: {aud_info['baki']}"), ln=True)
     pdf.cell(0, 5, safe_text(f"Utilisasi: {aud_info['util']} | Kreditur: {aud_info['total_kred']} Lembaga | Posisi: {aud_info['posisi']}"), ln=True)
-    pdf.ln(5); pdf.set_font("Helvetica", 'B', 7)
-    # Penyesuaian lebar kolom PDF agar muat kolom baru
-    w = [8, 25, 50, 30, 15, 15, 20, 12, 25, 25, 25, 25] if len(df.columns) > 10 else [8, 30, 55, 35, 15, 15, 15, 25, 15, 30, 30]
-    # Jika slik 2, gunakan w_bank
-    if "OS (Rp)" in df.columns:
-        w_bank = [8, 25, 45, 25, 12, 12, 20, 12, 25, 25]
-        w = w_bank
+    pdf.ln(5)
     
-    for i, c in enumerate(df.columns): pdf.cell(w[i], 8, safe_text(c), 1, 0, 'C')
-    pdf.ln(); pdf.set_font("Helvetica", size=6)
-    for _, r in df.iterrows():
-        for i, col in enumerate(df.columns): 
-            val = safe_text(r[col])
-            pdf.cell(w[i], 7, val[:35], 1, 0, 'L' if i in [1,2] else 'C')
+    if not df.empty:
+        pdf.set_font("Helvetica", 'B', 6) # Ukuran header disesuaikan
+        
+        # Pemanfaatan lebar penuh A4 Landscape (Maks 277mm dapat digunakan)
+        if "OS (Rp)" in df.columns:
+            # Slik 2 (Lebar Total: 277)
+            w = [7, 25, 45, 28, 20, 20, 15, 15, 20, 15, 33, 34] 
+        else:
+            # Slik 1 (Lebar Total: 277)
+            w = [7, 40, 30, 22, 28, 28, 20, 20, 15, 15, 15, 37] 
+        
+        # Cetak Header
+        for i, c in enumerate(df.columns): 
+            pdf.cell(w[i], 8, safe_text(c)[:int(w[i]*0.9)], 1, 0, 'C')
         pdf.ln()
+        
+        # Cetak Isi Tabel
+        pdf.set_font("Helvetica", size=5) # Ukuran font body
+        for _, r in df.iterrows():
+            for i, col in enumerate(df.columns): 
+                val = safe_text(r[col])
+                # Pemotongan dinamis: Teks dihitung berdasarkan lebarnya (1mm ~ 0.95 char max di font size 5)
+                max_chars = int(w[i] * 0.95)
+                pdf.cell(w[i], 7, val[:max_chars], 1, 0, 'L' if i in [1,2] else 'C')
+            pdf.ln()
     return bytes(pdf.output())
 
 # 3. Sidebar & Logika Utama
@@ -142,8 +176,7 @@ if uploaded_files:
                 data = json.loads(raw_content.strip())
                 ind = data.get('individual', {}); data_pokok = ind.get('dataPokokDebitur', [{}])[0]
                 ringkasan = ind.get('ringkasanFasilitas', {}); header_info = data.get('header', {})
-
-                # --- DATA PREPARATION ---
+                
                 nama_v = str(data_pokok.get('namaDebitur') or "-").upper()
                 nik_v = str(data_pokok.get('noIdentitas', '-'))
                 alamat_v = str(data_pokok.get('alamat', '-'))
@@ -157,9 +190,47 @@ if uploaded_files:
                 skor_v = ringkasan.get('kualitasTerburuk', '-')
                 plafon_v = float(ringkasan.get('plafonEfektifTotal', 0))
                 baki_v = float(ringkasan.get('bakiDebetTotal', 0))
-                util_v = (baki_v / plafon_v * 100) if plafon_v > 0 else 0
                 total_kred = sum([int(ringkasan.get(k, 0) or 0) for k in ['krediturBankUmum', 'krediturBPR/S', 'krediturLp', 'krediturLainnya']])
                 posisi_data_v = str(ind.get('posisiDataTerakhir', '-'))
+
+                fas_root = ind.get('fasilitas', {})
+                all_fas = []
+                for k in fas_root:
+                    if isinstance(fas_root[k], list): all_fas.extend(fas_root[k])
+
+                rows = []
+                for i, f in enumerate(all_fas, 1):
+                    histori_kolek = []
+                    if f.get('kualitas'): histori_kolek.append(str(f.get('kualitas')))
+                    for j in range(1, 25):
+                        kunci_kol = f"tahunBulan{j:02d}Kol"
+                        nilai_kol = f.get(kunci_kol)
+                        if nilai_kol and str(nilai_kol).strip():
+                            histori_kolek.append(str(nilai_kol).strip())
+                    kolek_terburuk = max(histori_kolek) if histori_kolek else (f.get('kualitas') or '-')
+                    
+                    raw_p = str(f.get('jenisPenggunaanKet', '')).lower()
+                    mapped_p = "KMK" if "modal kerja" in raw_p else ("Investasi" if "investasi" in raw_p else "Konsumsi")
+                    original_p = f.get('jenisKreditPembiayaanKet') or f.get('jenisKreditKet', '-')
+                    
+                    tgl_mulai = format_date(f.get('tanggalMulai'))
+                    tgl_jt = format_date(f.get('tanggalJatuhTempo'))
+
+                    rows.append({
+                        "NO": i, "NAMA JASA KEUANGAN": (f.get('ljkKet') or '-').upper(), 
+                        "JENIS_ORIGINAL": original_p, "JENIS_MAPPED": mapped_p,
+                        "PLAFON": format_rupiah(f.get('plafon', 0)), "BAKI DEBET": format_rupiah(f.get('bakiDebet', 0)),
+                        "RAW_BAKI": float(f.get('bakiDebet', 0)), 
+                        "TGL_MULAI": tgl_mulai, "JATUH_TEMPO": tgl_jt,
+                        "KOL_TERAKHIR": str(f.get('kualitas') or '-'),
+                        "KOL_TERBURUK": kolek_terburuk,
+                        "BUNGA": f"{f.get('sukuBungaImbalan', '-')} %", "KONDISI": f.get('kondisiKet', '-'),
+                        "RESTRUK": "✔" if f.get('tanggalRestrukturisasiAkhir') else "-"
+                    })
+
+                b_val = to_float(baki_v)
+                p_val = to_float(plafon_v)
+                util_v = (b_val / p_val * 100) if p_val > 0 else 0
 
                 col_id, col_aud = st.columns(2)
                 with col_id:
@@ -177,41 +248,7 @@ if uploaded_files:
                         <p class="lbl">Utilisasi & Kreditur</p><p class="val">{util_v:.2f}% | {total_kred} Lembaga</p>
                         <p class="lbl">Posisi Data Terakhir</p><p class="val">{posisi_data_v}</p></div>""", unsafe_allow_html=True)
 
-                fas_root = ind.get('fasilitas', {})
-                all_fas = []
-                for k in fas_root:
-                    if isinstance(fas_root[k], list): all_fas.extend(fas_root[k])
-
-                rows = []
-                for i, f in enumerate(all_fas, 1):
-                    # --- LOGIKA KOLEK TERBURUK ---
-                    histori_kolek = []
-                    if f.get('kualitas'): histori_kolek.append(str(f.get('kualitas')))
-                    # Cek histori 24 bulan
-                    for j in range(1, 25):
-                        kunci_kol = f"tahunBulan{j:02d}Kol"
-                        nilai_kol = f.get(kunci_kol)
-                        if nilai_kol and str(nilai_kol).strip():
-                            histori_kolek.append(str(nilai_kol).strip())
-                    
-                    kolek_terburuk = max(histori_kolek) if histori_kolek else (f.get('kualitas') or '-')
-                    
-                    # Logika Pemetaan Jenis Penggunaan
-                    raw_p = str(f.get('jenisPenggunaanKet', '')).lower()
-                    mapped_p = "KMK" if "modal kerja" in raw_p else ("Investasi" if "investasi" in raw_p else "Konsumsi")
-                    original_p = f.get('jenisKreditPembiayaanKet') or f.get('jenisKreditKet', '-')
-
-                    rows.append({
-                        "NO": i, "NAMA JASA KEUANGAN": (f.get('ljkKet') or '-').upper(), 
-                        "JENIS_ORIGINAL": original_p, "JENIS_MAPPED": mapped_p,
-                        "PLAFON": format_rupiah(f.get('plafon', 0)), "BAKI DEBET": format_rupiah(f.get('bakiDebet', 0)),
-                        "RAW_BAKI": float(f.get('bakiDebet', 0)), 
-                        "KOL_TERAKHIR": str(f.get('kualitas') or '-'),
-                        "KOL_TERBURUK": kolek_terburuk,
-                        "BUNGA": f"{f.get('sukuBungaImbalan', '-')} %", "KONDISI": f.get('kondisiKet', '-'),
-                        "RESTRUK": "✔" if f.get('tanggalRestrukturisasiAkhir') else "-"
-                    })
-                
+                df_final = pd.DataFrame()
                 if rows:
                     df_full = pd.DataFrame(rows)
                     st.markdown('<div class="table-header">PENGATURAN OUTPUT TABEL</div>', unsafe_allow_html=True)
@@ -233,34 +270,44 @@ if uploaded_files:
                     st.markdown('<div class="table-header">RINCIAN FASILITAS DEBITUR</div>', unsafe_allow_html=True)
                     
                     if sel_format == "slik 2":
-                        # Mapping slik 2 (Blue Theme)
                         df_b = df_f.rename(columns={
                             "JENIS_MAPPED": "Jenis Penggunaan", 
                             "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan", 
                             "BAKI DEBET": "OS (Rp)", 
+                            "TGL_MULAI": "Tanggal Akad Akhir",
+                            "JATUH_TEMPO": "Tanggal Jatuh Tempo",
                             "KOL_TERAKHIR": "Kol Terakhir",
                             "KOL_TERBURUK": "Kol terburuk",
                             "BUNGA": "Rate (%)"
                         })
                         df_b["Jumlah Hari Kol"] = "-"; df_b["Restrukturisasi Ya"] = df_b["RESTRUK"].apply(lambda x: "✔" if x=="✔" else ""); df_b["Restrukturisasi Tidak"] = df_b["RESTRUK"].apply(lambda x: "" if x=="✔" else "✔")
-                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "OS (Rp)", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi Ya", "Restrukturisasi Tidak"]
+                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi Ya", "Restrukturisasi Tidak"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_b[cols], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                         df_final = df_b[cols]
                     else:
-                        # slik 1 (Default) dengan tambahan Kolom Kolek Terburuk
-                        df_d = df_f.rename(columns={"JENIS_ORIGINAL": "JENIS", "KOL_TERAKHIR": "KOL TERAKHIR", "KOL_TERBURUK": "KOL TERBURUK"})
-                        df_final = df_d.drop(columns=['RAW_BAKI', 'RESTRUK', 'JENIS_MAPPED']); st.dataframe(df_final, use_container_width=True, hide_index=True)
+                        df_d = df_f.rename(columns={
+                            "JENIS_ORIGINAL": "JENIS", 
+                            "JENIS_MAPPED": "JENIS PENGGUNAAN",
+                            "TGL_MULAI": "TGL AKAD AKHIR",
+                            "JATUH_TEMPO": "TGL JATUH TEMPO",
+                            "KOL_TERAKHIR": "KOL TERAKHIR", 
+                            "KOL_TERBURUK": "KOL TERBURUK"
+                        })
+                        cols_slik1 = ["NO", "NAMA JASA KEUANGAN", "JENIS", "JENIS PENGGUNAAN", "PLAFON", "BAKI DEBET", "TGL AKAD AKHIR", "TGL JATUH TEMPO", "KOL TERAKHIR", "KOL TERBURUK", "BUNGA", "KONDISI"]
+                        df_final = df_d[cols_slik1]
+                        st.dataframe(df_final, use_container_width=True, hide_index=True)
 
-                    st.divider(); st.subheader("📥 Unduh Laporan")
-                    b1, b2, b3 = st.columns(3)
-                    id_i = {"nama": nama_v, "nik": nik_v, "alamat": alamat_v, "tgl": tgl_laporan_v, "tmpt_lahir": tmpt_lahir_v, "tgl_lahir": tgl_lahir_v, "jk": jk_v, "npwp": npwp_v, "pekerjaan": pekerjaan_v}
-                    aud_i = {"skor": skor_v, "plafon": format_rupiah(plafon_v), "baki": format_rupiah(baki_v), "util": f"{util_v:.2f}%", "total_kred": total_kred, "posisi": posisi_data_v}
-                    with b1: st.download_button("Excel (.xlsx)", icon="📊", data=export_excel(id_i, aud_i, df_final), file_name=f"Audit_{nama_v}.xlsx", key=f"xlsx_{uploaded_file.name}")
-                    with b2: st.download_button("Word (.docx)", icon="📝", data=export_word(id_i, aud_i, df_final), file_name=f"Audit_{nama_v}.docx", key=f"word_{uploaded_file.name}")
-                    with b3:
-                        if st.button("Generate PDF", icon="⚙️", key=f"gen_{uploaded_file.name}"):
-                            pdf_b = export_pdf(id_i, aud_i, df_final)
-                            st.download_button("Klik Simpan PDF", icon="📕", data=pdf_b, file_name=f"Audit_{nama_v}.pdf", key=f"pdf_{uploaded_file.name}")
+                st.divider(); st.subheader("📥 Unduh Laporan")
+                b1, b2, b3 = st.columns(3)
+                id_i = {"nama": nama_v, "nik": nik_v, "alamat": alamat_v, "tgl": tgl_laporan_v, "tmpt_lahir": tmpt_lahir_v, "tgl_lahir": tgl_lahir_v, "jk": jk_v, "npwp": npwp_v, "pekerjaan": pekerjaan_v}
+                aud_i = {"skor": skor_v, "plafon": format_rupiah(plafon_v), "baki": format_rupiah(baki_v), "util": f"{util_v:.2f}%", "total_kred": total_kred, "posisi": posisi_data_v}
+                with b1: st.download_button("Excel (.xlsx)", icon="📊", data=export_excel(id_i, aud_i, df_final), file_name=f"Audit_{nama_v}.xlsx", key=f"xlsx_{uploaded_file.name}")
+                with b2: st.download_button("Word (.docx)", icon="📝", data=export_word(id_i, aud_i, df_final), file_name=f"Audit_{nama_v}.docx", key=f"word_{uploaded_file.name}")
+                with b3:
+                    if st.button("Generate PDF", icon="⚙️", key=f"gen_{uploaded_file.name}"):
+                        pdf_b = export_pdf(id_i, aud_i, df_final)
+                        st.download_button("Klik Simpan PDF", icon="📕", data=pdf_b, file_name=f"Audit_{nama_v}.pdf", key=f"pdf_{uploaded_file.name}")
+
         except Exception as e: st.error(f"❌ Kesalahan pada file {uploaded_file.name}: {e}")
 else: st.info("Unggah satu atau beberapa file .txt iDEB untuk memproses.")
