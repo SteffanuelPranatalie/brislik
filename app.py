@@ -97,7 +97,7 @@ def export_excel(id_info, aud_info, df):
     df_sum = pd.DataFrame(summary_data)
     
     df_export = df.copy()
-    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)"]
+    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)", "Plafon Awal"]
     for col in kolom_uang:
         if col in df_export.columns:
             df_export[col] = df_export[col].apply(clean_currency_for_excel)
@@ -136,29 +136,25 @@ def export_pdf(id_info, aud_info, df):
     pdf.ln(5)
     
     if not df.empty:
-        pdf.set_font("Helvetica", 'B', 6) # Ukuran header disesuaikan
+        pdf.set_font("Helvetica", 'B', 6) 
         
-        # Pemanfaatan lebar penuh A4 Landscape (Maks 277mm dapat digunakan)
         if "OS (Rp)" in df.columns:
-            # Slik 2 (Lebar Total: 277)
-            w = [7, 25, 45, 28, 20, 20, 15, 15, 20, 15, 33, 34] 
+            # Slik 2: memiliki 13 Kolom
+            w = [7, 20, 40, 30, 22, 22, 18, 18, 12, 12, 16, 10, 18] 
         else:
-            # Slik 1 (Lebar Total: 277)
+            # Slik 1: memiliki 12 Kolom
             w = [7, 40, 30, 22, 28, 28, 20, 20, 15, 15, 15, 37] 
         
-        # Cetak Header
         for i, c in enumerate(df.columns): 
             pdf.cell(w[i], 8, safe_text(c)[:int(w[i]*0.9)], 1, 0, 'C')
         pdf.ln()
         
-        # Cetak Isi Tabel
-        pdf.set_font("Helvetica", size=5) # Ukuran font body
+        pdf.set_font("Helvetica", size=5)
         for _, r in df.iterrows():
             for i, col in enumerate(df.columns): 
                 val = safe_text(r[col])
-                # Pemotongan dinamis: Teks dihitung berdasarkan lebarnya (1mm ~ 0.95 char max di font size 5)
                 max_chars = int(w[i] * 0.95)
-                pdf.cell(w[i], 7, val[:max_chars], 1, 0, 'L' if i in [1,2] else 'C')
+                pdf.cell(w[i], 7, val[:max_chars], 1, 0, 'L' if i in [1,2,3] else 'C')
             pdf.ln()
     return bytes(pdf.output())
 
@@ -166,7 +162,7 @@ def export_pdf(id_info, aud_info, df):
 with st.sidebar:
     st.header("⚙️ Menu Utama")
     uploaded_files = st.file_uploader("Unggah File .txt iDEB", type=["txt"], accept_multiple_files=True)
-    st.divider(); st.caption("Developed by Steffanuel Pranatalie (23081010059)")
+    st.divider(); st.caption("Developed by Steffanuel Pranatalie")
 
 if uploaded_files:
     for uploaded_file in uploaded_files:
@@ -225,7 +221,7 @@ if uploaded_files:
                         "KOL_TERAKHIR": str(f.get('kualitas') or '-'),
                         "KOL_TERBURUK": kolek_terburuk,
                         "BUNGA": f"{f.get('sukuBungaImbalan', '-')} %", "KONDISI": f.get('kondisiKet', '-'),
-                        "RESTRUK": "✔" if f.get('tanggalRestrukturisasiAkhir') else "-"
+                        "RESTRUK": "Y" if f.get('tanggalRestrukturisasiAkhir') else "N"
                     })
 
                 b_val = to_float(baki_v)
@@ -254,16 +250,17 @@ if uploaded_files:
                     st.markdown('<div class="table-header">PENGATURAN OUTPUT TABEL</div>', unsafe_allow_html=True)
                     sel_format = st.radio(f"Pilih Tampilan ({uploaded_file.name}):", options=["slik 1 (Default)", "slik 2"], horizontal=True, key=f"fmt_{uploaded_file.name}")
                     
+                    # --- PERUBAHAN FILTER: Filter KOL Diganti Filter Jenis, Kondisi Dipertahankan ---
                     c_f1, c_f2, c_f3, c_f4 = st.columns(4)
                     with c_f1: sel_bank = st.multiselect("Filter Bank", options=sorted(df_full['NAMA JASA KEUANGAN'].unique()), key=f"bank_{uploaded_file.name}")
-                    with c_f2: sel_jenis = st.multiselect("Filter Jenis", options=sorted(df_full['JENIS_MAPPED'].unique()), key=f"jenis_{uploaded_file.name}")
-                    with c_f3: sel_kol = st.multiselect("Filter Skor KOL", options=sorted(df_full['KOL_TERAKHIR'].unique()), key=f"kol_{uploaded_file.name}")
+                    with c_f2: sel_jenis_penggunaan = st.multiselect("Filter Jenis Penggunaan", options=sorted(df_full['JENIS_MAPPED'].unique()), key=f"jp_{uploaded_file.name}")
+                    with c_f3: sel_jenis = st.multiselect("Filter Jenis", options=sorted(df_full['JENIS_ORIGINAL'].unique()), key=f"j_{uploaded_file.name}")
                     with c_f4: sel_kondisi = st.multiselect("Filter Kondisi", options=sorted(df_full['KONDISI'].unique()), key=f"kond_{uploaded_file.name}")
 
                     df_f = df_full.copy()
                     if sel_bank: df_f = df_f[df_f['NAMA JASA KEUANGAN'].isin(sel_bank)]
-                    if sel_jenis: df_f = df_f[df_f['JENIS_MAPPED'].isin(sel_jenis)]
-                    if sel_kol: df_f = df_f[df_f['KOL_TERAKHIR'].isin(sel_kol)]
+                    if sel_jenis_penggunaan: df_f = df_f[df_f['JENIS_MAPPED'].isin(sel_jenis_penggunaan)]
+                    if sel_jenis: df_f = df_f[df_f['JENIS_ORIGINAL'].isin(sel_jenis)]
                     if sel_kondisi: df_f = df_f[df_f['KONDISI'].isin(sel_kondisi)]
                     df_f['NO'] = range(1, len(df_f) + 1)
 
@@ -272,16 +269,19 @@ if uploaded_files:
                     if sel_format == "slik 2":
                         df_b = df_f.rename(columns={
                             "JENIS_MAPPED": "Jenis Penggunaan", 
-                            "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan", 
+                            "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan",
+                            "JENIS_ORIGINAL": "Jenis", 
+                            "PLAFON": "Plafon Awal",  
                             "BAKI DEBET": "OS (Rp)", 
                             "TGL_MULAI": "Tanggal Akad Akhir",
                             "JATUH_TEMPO": "Tanggal Jatuh Tempo",
                             "KOL_TERAKHIR": "Kol Terakhir",
                             "KOL_TERBURUK": "Kol terburuk",
-                            "BUNGA": "Rate (%)"
+                            "BUNGA": "Rate (%)",
+                            "RESTRUK": "Restrukturisasi"
                         })
-                        df_b["Jumlah Hari Kol"] = "-"; df_b["Restrukturisasi Ya"] = df_b["RESTRUK"].apply(lambda x: "✔" if x=="✔" else ""); df_b["Restrukturisasi Tidak"] = df_b["RESTRUK"].apply(lambda x: "" if x=="✔" else "✔")
-                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi Ya", "Restrukturisasi Tidak"]
+                        df_b["Jumlah Hari Kol"] = "-"
+                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "Jenis", "Plafon Awal", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_b[cols], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                         df_final = df_b[cols]
