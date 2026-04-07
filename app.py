@@ -139,10 +139,10 @@ def export_pdf(id_info, aud_info, df):
         pdf.set_font("Helvetica", 'B', 6) 
         
         if "OS (Rp)" in df.columns:
-            # Slik 2: memiliki 13 Kolom
-            w = [7, 20, 40, 30, 22, 22, 18, 18, 12, 12, 16, 10, 18] 
+            # Slik 2 (14 Kolom, lebar total maks 277)
+            w = [7, 20, 36, 25, 22, 22, 18, 18, 12, 12, 16, 10, 15, 15] 
         else:
-            # Slik 1: memiliki 12 Kolom
+            # Slik 1 (12 Kolom)
             w = [7, 40, 30, 22, 28, 28, 20, 20, 15, 15, 15, 37] 
         
         for i, c in enumerate(df.columns): 
@@ -211,11 +211,17 @@ if uploaded_files:
                     
                     tgl_mulai = format_date(f.get('tanggalMulai'))
                     tgl_jt = format_date(f.get('tanggalJatuhTempo'))
+                    
+                    plafon_awal_raw = f.get('nilaiProyek')
+                    if not plafon_awal_raw or float(plafon_awal_raw) == 0:
+                         plafon_awal_raw = f.get('plafon', 0)
 
                     rows.append({
                         "NO": i, "NAMA JASA KEUANGAN": (f.get('ljkKet') or '-').upper(), 
                         "JENIS_ORIGINAL": original_p, "JENIS_MAPPED": mapped_p,
-                        "PLAFON": format_rupiah(f.get('plafon', 0)), "BAKI DEBET": format_rupiah(f.get('bakiDebet', 0)),
+                        "PLAFON": format_rupiah(f.get('plafon', 0)), 
+                        "PLAFON_AWAL": format_rupiah(plafon_awal_raw), 
+                        "BAKI DEBET": format_rupiah(f.get('bakiDebet', 0)),
                         "RAW_BAKI": float(f.get('bakiDebet', 0)), 
                         "TGL_MULAI": tgl_mulai, "JATUH_TEMPO": tgl_jt,
                         "KOL_TERAKHIR": str(f.get('kualitas') or '-'),
@@ -250,7 +256,6 @@ if uploaded_files:
                     st.markdown('<div class="table-header">PENGATURAN OUTPUT TABEL</div>', unsafe_allow_html=True)
                     sel_format = st.radio(f"Pilih Tampilan ({uploaded_file.name}):", options=["slik 1 (Default)", "slik 2"], horizontal=True, key=f"fmt_{uploaded_file.name}")
                     
-                    # --- PERUBAHAN FILTER: Filter KOL Diganti Filter Jenis, Kondisi Dipertahankan ---
                     c_f1, c_f2, c_f3, c_f4 = st.columns(4)
                     with c_f1: sel_bank = st.multiselect("Filter Bank", options=sorted(df_full['NAMA JASA KEUANGAN'].unique()), key=f"bank_{uploaded_file.name}")
                     with c_f2: sel_jenis_penggunaan = st.multiselect("Filter Jenis Penggunaan", options=sorted(df_full['JENIS_MAPPED'].unique()), key=f"jp_{uploaded_file.name}")
@@ -271,17 +276,19 @@ if uploaded_files:
                             "JENIS_MAPPED": "Jenis Penggunaan", 
                             "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan",
                             "JENIS_ORIGINAL": "Jenis", 
-                            "PLAFON": "Plafon Awal",  
+                            "PLAFON_AWAL": "Plafon Awal",  
                             "BAKI DEBET": "OS (Rp)", 
                             "TGL_MULAI": "Tanggal Akad Akhir",
                             "JATUH_TEMPO": "Tanggal Jatuh Tempo",
                             "KOL_TERAKHIR": "Kol Terakhir",
                             "KOL_TERBURUK": "Kol terburuk",
                             "BUNGA": "Rate (%)",
-                            "RESTRUK": "Restrukturisasi"
+                            "RESTRUK": "Restrukturisasi",
+                            "KONDISI": "Kondisi"  # <-- Menambahkan Kondisi
                         })
                         df_b["Jumlah Hari Kol"] = "-"
-                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "Jenis", "Plafon Awal", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi"]
+                        # Menempatkan kolom Kondisi di akhir
+                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "Jenis", "Plafon Awal", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi", "Kondisi"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_b[cols], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                         df_final = df_b[cols]
