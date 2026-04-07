@@ -97,7 +97,7 @@ def export_excel(id_info, aud_info, df):
     df_sum = pd.DataFrame(summary_data)
     
     df_export = df.copy()
-    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)", "Plafon Awal"]
+    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)", "Plafon Awal", "OS"]
     for col in kolom_uang:
         if col in df_export.columns:
             df_export[col] = df_export[col].apply(clean_currency_for_excel)
@@ -138,11 +138,15 @@ def export_pdf(id_info, aud_info, df):
     if not df.empty:
         pdf.set_font("Helvetica", 'B', 6) 
         
-        if "OS (Rp)" in df.columns:
-            # Slik 2 (14 Kolom, lebar total maks 277)
-            w = [7, 20, 36, 25, 22, 22, 18, 18, 12, 12, 16, 10, 15, 15] 
+        # Penyesuaian Lebar PDF
+        if "Restrukturisasi Iya" in df.columns:
+            # Slik 3 (Egie): memiliki 9 Kolom
+            w = [10, 45, 45, 30, 20, 20, 20, 30, 30]
+        elif "OS (Rp)" in df.columns:
+            # Slik 2 (Aldista): memiliki 13 Kolom
+            w = [7, 20, 40, 30, 22, 22, 18, 18, 12, 12, 16, 10, 18] 
         else:
-            # Slik 1 (12 Kolom)
+            # Slik 1 (Default): memiliki 12 Kolom
             w = [7, 40, 30, 22, 28, 28, 20, 20, 15, 15, 15, 37] 
         
         for i, c in enumerate(df.columns): 
@@ -254,7 +258,9 @@ if uploaded_files:
                 if rows:
                     df_full = pd.DataFrame(rows)
                     st.markdown('<div class="table-header">PENGATURAN OUTPUT TABEL</div>', unsafe_allow_html=True)
-                    sel_format = st.radio(f"Pilih Tampilan ({uploaded_file.name}):", options=["slik 1 (Default)", "slik 2"], horizontal=True, key=f"fmt_{uploaded_file.name}")
+                    
+                    # --- PERUBAHAN NAMA OPSI RADIO BUTTON ---
+                    sel_format = st.radio(f"Pilih Tampilan ({uploaded_file.name}):", options=["slik 1 (Default)", "slik 2 (Aldista)", "slik 3 (Egie)"], horizontal=True, key=f"fmt_{uploaded_file.name}")
                     
                     c_f1, c_f2, c_f3, c_f4 = st.columns(4)
                     with c_f1: sel_bank = st.multiselect("Filter Bank", options=sorted(df_full['NAMA JASA KEUANGAN'].unique()), key=f"bank_{uploaded_file.name}")
@@ -271,7 +277,25 @@ if uploaded_files:
 
                     st.markdown('<div class="table-header">RINCIAN FASILITAS DEBITUR</div>', unsafe_allow_html=True)
                     
-                    if sel_format == "slik 2":
+                    # --- LOGIKA PENANGANAN OPSI ---
+                    if sel_format == "slik 3 (Egie)":
+                        df_c = df_f.rename(columns={
+                            "NAMA JASA KEUANGAN": "Bank",
+                            "JENIS_ORIGINAL": "Jenis Kredit",
+                            "BAKI DEBET": "OS",
+                            "KOL_TERAKHIR": "Kol Terakhir",
+                            "KOL_TERBURUK": "Kol Terburuk",
+                            "BUNGA": "Suku Bunga"
+                        })
+                        df_c["Restrukturisasi Iya"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "Y" else "")
+                        df_c["Restrukturisasi Tidak"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "N" else "")
+                        
+                        cols_slik3 = ["NO", "Bank", "Jenis Kredit", "OS", "Kol Terakhir", "Kol Terburuk", "Suku Bunga", "Restrukturisasi Iya", "Restrukturisasi Tidak"]
+                        st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_c[cols_slik3], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
+                        df_final = df_c[cols_slik3]
+                        
+                    elif sel_format == "slik 2 (Aldista)":
                         df_b = df_f.rename(columns={
                             "JENIS_MAPPED": "Jenis Penggunaan", 
                             "NAMA JASA KEUANGAN": "Bank/Lembaga pembiayaan",
@@ -283,15 +307,14 @@ if uploaded_files:
                             "KOL_TERAKHIR": "Kol Terakhir",
                             "KOL_TERBURUK": "Kol terburuk",
                             "BUNGA": "Rate (%)",
-                            "RESTRUK": "Restrukturisasi",
-                            "KONDISI": "Kondisi"  # <-- Menambahkan Kondisi
+                            "RESTRUK": "Restrukturisasi"
                         })
                         df_b["Jumlah Hari Kol"] = "-"
-                        # Menempatkan kolom Kondisi di akhir
-                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "Jenis", "Plafon Awal", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi", "Kondisi"]
+                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "Jenis", "Plafon Awal", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_b[cols], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                         df_final = df_b[cols]
+                        
                     else:
                         df_d = df_f.rename(columns={
                             "JENIS_ORIGINAL": "JENIS", 
