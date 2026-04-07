@@ -138,10 +138,10 @@ def export_pdf(id_info, aud_info, df):
     if not df.empty:
         pdf.set_font("Helvetica", 'B', 6) 
         
-        # Penyesuaian Lebar PDF
+        # Penyesuaian Lebar PDF untuk Slik 1, Slik 2, dan Slik 3
         if "Restrukturisasi Iya" in df.columns:
-            # Slik 3 (Egie): memiliki 9 Kolom
-            w = [10, 45, 45, 30, 20, 20, 20, 30, 30]
+            # Slik 3 (Egie): memiliki 11 Kolom
+            w = [7, 25, 45, 35, 25, 18, 18, 20, 16, 30, 30]
         elif "OS (Rp)" in df.columns:
             # Slik 2 (Aldista): memiliki 13 Kolom
             w = [7, 20, 40, 30, 22, 22, 18, 18, 12, 12, 16, 10, 18] 
@@ -259,7 +259,6 @@ if uploaded_files:
                     df_full = pd.DataFrame(rows)
                     st.markdown('<div class="table-header">PENGATURAN OUTPUT TABEL</div>', unsafe_allow_html=True)
                     
-                    # --- PERUBAHAN NAMA OPSI RADIO BUTTON ---
                     sel_format = st.radio(f"Pilih Tampilan ({uploaded_file.name}):", options=["slik 1 (Default)", "slik 2 (Aldista)", "slik 3 (Egie)"], horizontal=True, key=f"fmt_{uploaded_file.name}")
                     
                     c_f1, c_f2, c_f3, c_f4 = st.columns(4)
@@ -277,9 +276,9 @@ if uploaded_files:
 
                     st.markdown('<div class="table-header">RINCIAN FASILITAS DEBITUR</div>', unsafe_allow_html=True)
                     
-                    # --- LOGIKA PENANGANAN OPSI ---
                     if sel_format == "slik 3 (Egie)":
                         df_c = df_f.rename(columns={
+                            "JENIS_MAPPED": "Jenis Penggunaan", # Ditambahkan
                             "NAMA JASA KEUANGAN": "Bank",
                             "JENIS_ORIGINAL": "Jenis Kredit",
                             "BAKI DEBET": "OS",
@@ -287,10 +286,11 @@ if uploaded_files:
                             "KOL_TERBURUK": "Kol Terburuk",
                             "BUNGA": "Suku Bunga"
                         })
+                        df_c["Jumlah Hari Kol"] = "-" # Ditambahkan
                         df_c["Restrukturisasi Iya"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "Y" else "")
                         df_c["Restrukturisasi Tidak"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "N" else "")
                         
-                        cols_slik3 = ["NO", "Bank", "Jenis Kredit", "OS", "Kol Terakhir", "Kol Terburuk", "Suku Bunga", "Restrukturisasi Iya", "Restrukturisasi Tidak"]
+                        cols_slik3 = ["NO", "Jenis Penggunaan", "Bank", "Jenis Kredit", "OS", "Kol Terakhir", "Kol Terburuk", "Jumlah Hari Kol", "Suku Bunga", "Restrukturisasi Iya", "Restrukturisasi Tidak"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_c[cols_slik3], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                         df_final = df_c[cols_slik3]
