@@ -97,7 +97,8 @@ def export_excel(id_info, aud_info, df):
     df_sum = pd.DataFrame(summary_data)
     
     df_export = df.copy()
-    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)", "Plafon Awal", "OS"]
+    # Menghapus "OS" (Slik 3) dari daftar ini agar tetap format Rupiah di Excel
+    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)", "Plafon Awal"]
     for col in kolom_uang:
         if col in df_export.columns:
             df_export[col] = df_export[col].apply(clean_currency_for_excel)
@@ -140,10 +141,10 @@ def export_pdf(id_info, aud_info, df):
         
         # Penyesuaian Lebar PDF untuk Slik 1, Slik 2, dan Slik 3
         if "Restrukturisasi Iya" in df.columns:
-            # Slik 3 (Egie): memiliki 11 Kolom
-            w = [7, 25, 45, 35, 25, 18, 18, 20, 16, 30, 30]
+            # Slik 3 (Egie): sekarang 10 Kolom (Jenis Kredit Dihapus)
+            w = [7, 30, 55, 30, 20, 20, 20, 20, 35, 35]
         elif "OS (Rp)" in df.columns:
-            # Slik 2 (Aldista): sekarang memiliki 14 Kolom (Kondisi ditambahkan)
+            # Slik 2 (Aldista): memiliki 14 Kolom
             w = [7, 20, 36, 25, 22, 22, 18, 18, 12, 12, 16, 10, 15, 15] 
         else:
             # Slik 1 (Default): memiliki 12 Kolom
@@ -280,7 +281,6 @@ if uploaded_files:
                         df_c = df_f.rename(columns={
                             "JENIS_MAPPED": "Jenis Penggunaan",
                             "NAMA JASA KEUANGAN": "Bank",
-                            "JENIS_ORIGINAL": "Jenis Kredit",
                             "BAKI DEBET": "OS",
                             "KOL_TERAKHIR": "Kol Terakhir",
                             "KOL_TERBURUK": "Kol Terburuk",
@@ -290,7 +290,8 @@ if uploaded_files:
                         df_c["Restrukturisasi Iya"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "Y" else "")
                         df_c["Restrukturisasi Tidak"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "N" else "")
                         
-                        cols_slik3 = ["NO", "Jenis Penggunaan", "Bank", "Jenis Kredit", "OS", "Kol Terakhir", "Kol Terburuk", "Jumlah Hari Kol", "Suku Bunga", "Restrukturisasi Iya", "Restrukturisasi Tidak"]
+                        # Menghapus "Jenis Kredit" dari urutan kolom Slik 3
+                        cols_slik3 = ["NO", "Jenis Penggunaan", "Bank", "OS", "Kol Terakhir", "Kol Terburuk", "Jumlah Hari Kol", "Suku Bunga", "Restrukturisasi Iya", "Restrukturisasi Tidak"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_c[cols_slik3], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                         df_final = df_c[cols_slik3]
@@ -308,10 +309,9 @@ if uploaded_files:
                             "KOL_TERBURUK": "Kol terburuk",
                             "BUNGA": "Rate (%)",
                             "RESTRUK": "Restrukturisasi",
-                            "KONDISI": "Kondisi"  # <-- Menambahkan Kondisi
+                            "KONDISI": "Kondisi"  
                         })
                         df_b["Jumlah Hari Kol"] = "-"
-                        # Menambahkan "Kondisi" di dalam List Kolom Slik 2
                         cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "Jenis", "Plafon Awal", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi", "Kondisi"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_b[cols], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
