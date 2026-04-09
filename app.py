@@ -143,8 +143,8 @@ def export_pdf(id_info, aud_info, df):
             # Slik 3 (Egie): memiliki 11 Kolom
             w = [7, 25, 45, 35, 25, 18, 18, 20, 16, 30, 30]
         elif "OS (Rp)" in df.columns:
-            # Slik 2 (Aldista): memiliki 13 Kolom
-            w = [7, 20, 40, 30, 22, 22, 18, 18, 12, 12, 16, 10, 18] 
+            # Slik 2 (Aldista): sekarang memiliki 14 Kolom (Kondisi ditambahkan)
+            w = [7, 20, 36, 25, 22, 22, 18, 18, 12, 12, 16, 10, 15, 15] 
         else:
             # Slik 1 (Default): memiliki 12 Kolom
             w = [7, 40, 30, 22, 28, 28, 20, 20, 15, 15, 15, 37] 
@@ -278,7 +278,7 @@ if uploaded_files:
                     
                     if sel_format == "slik 3 (Egie)":
                         df_c = df_f.rename(columns={
-                            "JENIS_MAPPED": "Jenis Penggunaan", # Ditambahkan
+                            "JENIS_MAPPED": "Jenis Penggunaan",
                             "NAMA JASA KEUANGAN": "Bank",
                             "JENIS_ORIGINAL": "Jenis Kredit",
                             "BAKI DEBET": "OS",
@@ -286,7 +286,7 @@ if uploaded_files:
                             "KOL_TERBURUK": "Kol Terburuk",
                             "BUNGA": "Suku Bunga"
                         })
-                        df_c["Jumlah Hari Kol"] = "-" # Ditambahkan
+                        df_c["Jumlah Hari Kol"] = "-" 
                         df_c["Restrukturisasi Iya"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "Y" else "")
                         df_c["Restrukturisasi Tidak"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "N" else "")
                         
@@ -307,10 +307,12 @@ if uploaded_files:
                             "KOL_TERAKHIR": "Kol Terakhir",
                             "KOL_TERBURUK": "Kol terburuk",
                             "BUNGA": "Rate (%)",
-                            "RESTRUK": "Restrukturisasi"
+                            "RESTRUK": "Restrukturisasi",
+                            "KONDISI": "Kondisi"  # <-- Menambahkan Kondisi
                         })
                         df_b["Jumlah Hari Kol"] = "-"
-                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "Jenis", "Plafon Awal", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi"]
+                        # Menambahkan "Kondisi" di dalam List Kolom Slik 2
+                        cols = ["NO", "Jenis Penggunaan", "Bank/Lembaga pembiayaan", "Jenis", "Plafon Awal", "OS (Rp)", "Tanggal Akad Akhir", "Tanggal Jatuh Tempo", "Kol Terakhir", "Kol terburuk", "Jumlah Hari Kol", "Rate (%)", "Restrukturisasi", "Kondisi"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_b[cols], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
                         df_final = df_b[cols]
