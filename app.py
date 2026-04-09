@@ -68,17 +68,13 @@ def safe_text(text):
     if not text: return "-"
     return str(text).replace("✔", "V").encode('ascii', 'ignore').decode('ascii')
 
-def clean_currency_for_excel(val):
-    if isinstance(val, str) and "Rp" in val:
-        try: return int(val.replace("Rp", "").replace(".", "").strip())
-        except: return val
-    return val
-
 # --- FUNGSI EKSPOR ---
 def export_excel(id_info, aud_info, df):
     output = io.BytesIO()
-    plafon_num = clean_currency_for_excel(aud_info['plafon'])
-    baki_num = clean_currency_for_excel(aud_info['baki'])
+    
+    # Konversi menjadi integer mentah agar bisa di SUM oleh Excel
+    plafon_num = int(to_float(aud_info['plafon']))
+    baki_num = int(to_float(aud_info['baki']))
     
     summary_data = [
         ["IDENTITAS DEBITUR", ""],
@@ -97,15 +93,37 @@ def export_excel(id_info, aud_info, df):
     df_sum = pd.DataFrame(summary_data)
     
     df_export = df.copy()
-    # Menghapus "OS" (Slik 3) dari daftar ini agar tetap format Rupiah di Excel
-    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)", "Plafon Awal"]
+    kolom_uang = ["PLAFON", "BAKI DEBET", "OS (Rp)", "Plafon Awal", "OS"]
+    
+    # Mengubah value ke number agar fungsi SUM di Excel aktif
     for col in kolom_uang:
         if col in df_export.columns:
-            df_export[col] = df_export[col].apply(clean_currency_for_excel)
+            df_export[col] = df_export[col].apply(lambda x: int(to_float(x)))
             
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_sum.to_excel(writer, index=False, header=False, sheet_name='Audit')
-        if not df_export.empty: df_export.to_excel(writer, index=False, startrow=len(summary_data), sheet_name='Audit')
+        if not df_export.empty: 
+            df_export.to_excel(writer, index=False, startrow=len(summary_data), sheet_name='Audit')
+        
+        # --- LOGIKA PENAMBAHAN FORMAT RUPIAH PADA EXCEL NUMBER ---
+        workbook = writer.book
+        worksheet = writer.sheets['Audit']
+        
+        # Format string dari OpenPyXL yang memberitahu Excel untuk menampilkan "Rp " di depan number
+        rp_format = '"Rp "#,##0'
+        
+        # Menerapkan format di Summary (Baris ke-12 dan 13)
+        worksheet.cell(row=12, column=2).number_format = rp_format
+        worksheet.cell(row=13, column=2).number_format = rp_format
+        
+        # Menerapkan format ke kolom tabel rincian
+        if not df_export.empty:
+            for col_name in kolom_uang:
+                if col_name in df_export.columns:
+                    col_idx = df_export.columns.get_loc(col_name) + 1
+                    for row_idx in range(len(summary_data) + 2, len(summary_data) + 2 + len(df_export)):
+                        worksheet.cell(row=row_idx, column=col_idx).number_format = rp_format
+
     return output.getvalue()
 
 def export_word(id_info, aud_info, df):
@@ -139,10 +157,9 @@ def export_pdf(id_info, aud_info, df):
     if not df.empty:
         pdf.set_font("Helvetica", 'B', 6) 
         
-        # Penyesuaian Lebar PDF untuk Slik 1, Slik 2, dan Slik 3
         if "Restrukturisasi Iya" in df.columns:
-            # Slik 3 (Egie): sekarang 10 Kolom (Jenis Kredit Dihapus)
-            w = [7, 30, 55, 30, 20, 20, 20, 20, 35, 35]
+            # Slik 3 (Egie): memiliki 11 Kolom
+            w = [7, 25, 45, 35, 25, 18, 18, 20, 16, 30, 30]
         elif "OS (Rp)" in df.columns:
             # Slik 2 (Aldista): memiliki 14 Kolom
             w = [7, 20, 36, 25, 22, 22, 18, 18, 12, 12, 16, 10, 15, 15] 
@@ -290,7 +307,6 @@ if uploaded_files:
                         df_c["Restrukturisasi Iya"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "Y" else "")
                         df_c["Restrukturisasi Tidak"] = df_c["RESTRUK"].apply(lambda x: "✔" if x == "N" else "")
                         
-                        # Menghapus "Jenis Kredit" dari urutan kolom Slik 3
                         cols_slik3 = ["NO", "Jenis Penggunaan", "Bank", "OS", "Kol Terakhir", "Kol Terburuk", "Jumlah Hari Kol", "Suku Bunga", "Restrukturisasi Iya", "Restrukturisasi Tidak"]
                         st.markdown('<div class="blue-header">', unsafe_allow_html=True); st.dataframe(df_c[cols_slik3], use_container_width=True, hide_index=True); st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown(f"""<div style="background-color:#0000FF; color:white; padding:10px; font-weight:bold; text-align:center;">Total Outstanding: {format_rupiah(df_f['RAW_BAKI'].sum())}</div>""", unsafe_allow_html=True)
